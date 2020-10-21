@@ -40,7 +40,7 @@ class Agent(object):
         self.polity = polity
         self.last_action = None
         self.gamma = gamma
-        self.t=0
+        self.t = 0
 
     def choose(self):
         action = self.polity.choose(self)
@@ -49,8 +49,9 @@ class Agent(object):
 
     def clc(self):
         self.value[:] = self.prior
+        self.action_attempts[:] = 0
         self.last_action = None
-        self.t=0
+        self.t = 0
 
     def observe(self, reward):
         self.action_attempts[self.last_action] += 1
@@ -60,7 +61,7 @@ class Agent(object):
             g = self.gamma
         q = self.value[self.last_action]
         self.value[self.last_action] += g * (reward - q)
-        self.t+=1
+        self.t += 1
 
 
 class EGreedy(object):
@@ -79,7 +80,23 @@ class EGreedy(object):
                 return np.random.choice(check)
 
 
-def epsilon_greedy(agents, bandit, trials=100, epochs=100):
+class UCB(object):
+    def __init__(self, c):
+        self.c = c
+
+    def choose(self, agent):
+        exploration = np.log(agent.t + 1) / agent.action_attempts
+        exploration[np.isnan(exploration)] = 0
+        exploration = np.power(exploration, 1 / self.c)
+        q = agent.value + exploration
+        action = np.argmax(q)
+        if len(np.where(q == q[action])[0]) == 1:
+            return action
+        else:
+            return np.random.choice(np.where(q == q[action])[0])
+
+
+def ucb(agents, bandit, trials=100, epochs=100):
     score = np.zeros((trials, len(agents)))
     optimal = np.zeros((trials, len(agents)))
     for _ in range(epochs):
@@ -94,26 +111,21 @@ def epsilon_greedy(agents, bandit, trials=100, epochs=100):
                 score[t, i] += reward
                 if flag:
                     optimal[t, i] += 1
-            # print(score)
-            # print("*" * 20)
-            # print(optimal)
     return score / epochs, optimal / epochs
 
 
 if __name__ == '__main__':
     k = 15
-    epsilon = [0, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5]
-    trials = [500, 1000, 2000]
     bandit = GaussMAB(k)
-    polity = [EGreedy(e) for e in epsilon]
-    agents = [Agent(bandit, p) for p in polity]
-    for trial in trials:
-        score, optimal = epsilon_greedy(agents, bandit, trials=trial, epochs=trial//2)
-        legend = ["\u03B5=" + str(e) for e in epsilon]
-        label = "\u03B5-greedy"
-        plt.plot(score)
-        plt.legend(legend)
-        plt.title(label)
-        plt.ylabel("Average Reward")
-        plt.savefig("hw1-{}.png".format(trial))
-        plt.show()
+    pol_ucb = UCB(2)
+    pol_e = EGreedy(0.1)
+    agents = [Agent(bandit, pol_ucb), Agent(bandit,pol_e)]
+    trial = 2000
+    score, optimal = ucb(agents, bandit, trials=trial, epochs=trial // 2)
+    label = "ucb & \u03B5-greedy"
+    plt.plot(score)
+    plt.title(label)
+    plt.legend(["ucb=2","\u03B5=0.1"])
+    plt.ylabel("Average Reward")
+    plt.savefig("hw2")
+    plt.show()
